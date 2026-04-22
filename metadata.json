@@ -1,0 +1,5 @@
+{
+  "name": "Schema-Aware NL-to-SQL Engine",
+  "description": "An academic-grade system that converts natural language queries into SQL using schema awareness, executes them on a relational database, and evaluates performance.",
+  "requestFramePermissions": []
+}
