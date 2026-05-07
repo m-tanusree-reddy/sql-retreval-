@@ -103,6 +103,10 @@ export default function App() {
   const [uploadInsights, setUploadInsights] = useState<string[]>([]);
   const [uploadFileName, setUploadFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Insert/Data manipulation State
+  const [insertTargetTable, setInsertTargetTable] = useState<string>('');
+  const [insertFormData, setInsertFormData] = useState<Record<string, any>>({});
 
   useEffect(() => {
     fetchSchema();
