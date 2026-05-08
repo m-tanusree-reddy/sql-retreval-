@@ -1,9 +1,13 @@
+import dotenv from "dotenv";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { initDb, db } from "./src/db/init";
 import { getFullSchema } from "./src/services/schema";
 import { validateSQL, SQLValidationError } from "./src/services/validator";
 import { evaluateSQL } from "./src/services/evaluator";
+import { generateSQL, generateInsights, analyzeResults } from "./src/services/gemini";
+
+dotenv.config();
 
 async function startServer() {
   // Initialize Database
@@ -129,6 +133,48 @@ async function startServer() {
 
     const evaluation = evaluateSQL(predictedSQL, groundTruthSQL);
     res.json(evaluation);
+  });
+
+  app.post('/api/generate-sql', async (req, res) => {
+    const { query, schema: querySchema, apiKey } = req.body;
+    if (!query) return res.status(400).json({ error: 'Query is required' });
+
+    try {
+      const schemaToUse = querySchema && Array.isArray(querySchema) ? querySchema : getFullSchema();
+      const generation = await generateSQL(query, schemaToUse, apiKey);
+      res.json(generation);
+    } catch (error: any) {
+      console.error('AI generateSQL error:', error);
+      res.status(500).json({ error: error.message || 'AI generation failed' });
+    }
+  });
+
+  app.post('/api/analyze', async (req, res) => {
+    const { query, results, apiKey } = req.body;
+    if (!query) return res.status(400).json({ error: 'Query is required' });
+    if (!Array.isArray(results)) return res.status(400).json({ error: 'Results array is required' });
+
+    try {
+      const analysis = await analyzeResults(query, results, apiKey);
+      res.json(analysis);
+    } catch (error: any) {
+      console.error('AI analyzeResults error:', error);
+      res.status(500).json({ error: error.message || 'AI analysis failed' });
+    }
+  });
+
+  app.post('/api/insights', async (req, res) => {
+    const { dataSample, schemaContext, apiKey } = req.body;
+    if (!Array.isArray(dataSample) || dataSample.length === 0) return res.status(400).json({ error: 'Data sample array is required' });
+    if (!schemaContext) return res.status(400).json({ error: 'Schema context is required' });
+
+    try {
+      const insights = await generateInsights(dataSample, schemaContext, apiKey);
+      res.json(insights);
+    } catch (error: any) {
+      console.error('AI generateInsights error:', error);
+      res.status(500).json({ error: error.message || 'AI insights generation failed' });
+    }
   });
 
   // Vite middleware for development

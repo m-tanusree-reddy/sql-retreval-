@@ -39,7 +39,6 @@ import {
   FileStack,
   Key
 } from 'lucide-react';
-import { generateSQL, generateInsights, analyzeResults } from './services/gemini';
 import { Suggestions } from './components/Suggestions';
 import { HistorySidebar } from './components/HistorySidebar';
 import { Visualizer } from './components/Visualizer';
@@ -79,7 +78,6 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [queryNotes, setQueryNotes] = useState<Record<string, string>>({});
-  const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('user-gemini-api-key') || '');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -89,10 +87,6 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  useEffect(() => {
-    localStorage.setItem('user-gemini-api-key', userApiKey);
-  }, [userApiKey]);
 
   // Viewer State
   const [selectedViewerTable, setSelectedViewerTable] = useState<string | null>(null);
@@ -181,8 +175,18 @@ export default function App() {
 
     try {
       // 1. Generation & Synthesis (Consolidated for speed)
-      const { sql, relevantTables } = await generateSQL(activeQuery, schema, userApiKey);
-      
+      const genRes = await fetch('/api/generate-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: activeQuery, schema })
+      });
+      const genData = await genRes.json();
+
+      if (!genRes.ok) {
+        throw new Error(genData.error || 'AI generation failed');
+      }
+
+      const { sql, relevantTables } = genData;
       const relevant = schema.filter(s => relevantTables?.includes(s.tableName));
       setFilteredSchema(relevant);
 
@@ -198,7 +202,15 @@ export default function App() {
 
       if (execRes.ok) {
         // 4. Analysis
-        const analysis = await analyzeResults(activeQuery, execData.results, userApiKey);
+        const analysisRes = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: activeQuery, results: execData.results })
+        });
+        const analysis = await analysisRes.json();
+        if (!analysisRes.ok) {
+          throw new Error(analysis.error || 'AI analysis failed');
+        }
         
         const assistantMsg: ChatMessage = {
           id: Math.random().toString(36).substr(2, 9),
@@ -285,8 +297,15 @@ export default function App() {
 
         // Generate AI Insights from uploaded data
         const schemaCtx = Object.keys(data[0] || {}).map(k => `${k} (inferred)`).join(', ');
-        const insights = await generateInsights(data, `Table: ${tableName}\nColumns: ${schemaCtx}`, userApiKey);
-        setUploadInsights(insights);
+        const insightsRes = await fetch('/api/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataSample: data, schemaContext: `Table: ${tableName}\nColumns: ${schemaCtx}` })
+        });
+        const insights = await insightsRes.json();
+        if (insightsRes.ok) {
+          setUploadInsights(insights);
+        }
       } catch (err) {
         console.error("Upload error", err);
         setError({ message: "Failed to parse file. Ensure it is a valid CSV or Excel.", type: "critical" });
@@ -357,19 +376,7 @@ export default function App() {
               <Key size={12} />
               <span>Neural Key</span>
             </div>
-            <input 
-              type="password"
-              value={userApiKey}
-              onChange={(e) => setUserApiKey(e.target.value)}
-              placeholder="Enter Gemini API Key..."
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-indigo-300 placeholder:text-gray-700 outline-none focus:border-indigo-500/50 transition-all font-mono"
-            />
-            {userApiKey && (
-              <p className="text-[9px] text-emerald-500/60 flex items-center gap-1">
-                <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                Custom Key Active
-              </p>
-            )}
+            <div className="text-[10px] text-gray-400 font-medium">Gemini API key is configured in the backend.</div>
           </div>
         </div>
       </aside>
